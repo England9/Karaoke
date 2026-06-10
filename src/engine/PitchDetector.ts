@@ -18,8 +18,8 @@ export class RealtimePitchDetector {
     const fftSize = options.fftSize ?? 4096;
     this.buffer = new Float32Array(fftSize) as Float32Array<ArrayBuffer>;
     this.detector = McLeodPitchDetector.forFloat32Array(fftSize);
-    this.detector.clarityThreshold = options.clarityThreshold ?? 0.86;
-    this.detector.minVolumeDecibels = options.minVolumeDecibels ?? -48;
+    this.detector.clarityThreshold = options.clarityThreshold ?? 0.65;
+    this.detector.minVolumeDecibels = options.minVolumeDecibels ?? -60;
   }
 
   readFrame(analyser: AnalyserNode, sampleRate: number): PitchFrame {
@@ -27,7 +27,7 @@ export class RealtimePitchDetector {
 
     const [frequency, clarity] = this.detector.findPitch(this.buffer, sampleRate);
     const volume = this.getRmsVolume();
-    const detected = frequency > 0 && clarity >= (this.options.clarityThreshold ?? 0.86);
+    const detected = frequency > 0 && clarity >= (this.options.clarityThreshold ?? 0.65);
     const midi = detected ? hzToMidi(frequency) : 0;
     const roundedMidi = detected ? Math.round(midi) : 0;
     const targetFrequency = detected ? midiToHz(roundedMidi) : 0;

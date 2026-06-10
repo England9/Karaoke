@@ -158,6 +158,30 @@ function App() {
     }
   };
 
+  const handleMonitorToggle = async (outputEnabled: boolean) => {
+    if (outputEnabled && !state.initialized) {
+      await initialize();
+    }
+
+    updateSettings({ outputEnabled });
+  };
+
+  const handleEchoToggle = async (echoEnabled: boolean) => {
+    if (echoEnabled && !state.initialized) {
+      await initialize();
+    }
+
+    updateSettings({ echoEnabled, outputEnabled: echoEnabled ? true : settings.outputEnabled });
+  };
+
+  const handleReverbToggle = async (reverbEnabled: boolean) => {
+    if (reverbEnabled && !state.initialized) {
+      await initialize();
+    }
+
+    updateSettings({ reverbEnabled, outputEnabled: reverbEnabled ? true : settings.outputEnabled });
+  };
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#03040a] text-slate-100">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_82%_18%,rgba(217,70,239,0.18),transparent_28%),radial-gradient(circle_at_50%_100%,rgba(124,58,237,0.18),transparent_35%)]" />
@@ -304,7 +328,7 @@ function App() {
             <Toggle
               label="Monitor processed vocal output"
               enabled={settings.outputEnabled}
-              onChange={(outputEnabled) => updateSettings({ outputEnabled })}
+              onChange={(outputEnabled) => void handleMonitorToggle(outputEnabled)}
             />
           </Panel>
 
@@ -312,7 +336,7 @@ function App() {
             <Toggle
               label="Echo mode"
               enabled={settings.echoEnabled}
-              onChange={(echoEnabled) => updateSettings({ echoEnabled })}
+              onChange={(echoEnabled) => void handleEchoToggle(echoEnabled)}
             />
             <Slider
               label="Delay time"
@@ -335,7 +359,7 @@ function App() {
             <Toggle
               label="Room reverb"
               enabled={settings.reverbEnabled}
-              onChange={(reverbEnabled) => updateSettings({ reverbEnabled })}
+              onChange={(reverbEnabled) => void handleReverbToggle(reverbEnabled)}
             />
           </Panel>
 
@@ -377,7 +401,7 @@ function App() {
             McLeod pitch method via pitchy reads a 4096-sample analyser buffer at animation-frame cadence.
           </InfoBadge>
           <InfoBadge icon={<SlidersHorizontal />} title="Signal flow">
-            Mic to analyser, compressor, Tone PitchShift, FeedbackDelay, Reverb, master gain, and destination.
+            Mic to analyser, compressor, live monitor, native echo/reverb sends, master gain, and destination.
           </InfoBadge>
           <InfoBadge icon={<Sparkles />} title="Scoring">
             Perfect within 10 cents, good within 25 cents, off-key outside 50 cents, with combo multiplier.

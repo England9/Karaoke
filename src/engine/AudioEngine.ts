@@ -53,6 +53,18 @@ export class AudioEngine {
 
   private masterGain?: GainNode;
 
+  private dryGain?: GainNode;
+
+  private echoDelayNode?: DelayNode;
+
+  private echoFeedbackGain?: GainNode;
+
+  private echoWetGain?: GainNode;
+
+  private reverbConvolver?: ConvolverNode;
+
+  private reverbGain?: GainNode;
+
   private pitchShift?: Tone.PitchShift;
 
   private feedbackDelay?: Tone.FeedbackDelay;
@@ -122,7 +134,14 @@ export class AudioEngine {
     this.compressor.release.value = 0.16;
 
     this.masterGain = this.context.createGain();
-    this.masterGain.gain.value = this.settings.outputEnabled ? this.settings.masterGain : 0;
+    this.masterGain.gain.value = this.settings.masterGain;
+    this.dryGain = this.context.createGain();
+    this.echoDelayNode = this.context.createDelay(1.5);
+    this.echoFeedbackGain = this.context.createGain();
+    this.echoWetGain = this.context.createGain();
+    this.reverbConvolver = this.context.createConvolver();
+    this.reverbConvolver.buffer = this.createImpulseResponse(2.3, 1.8);
+    this.reverbGain = this.context.createGain();
 
     this.pitchShift = new Tone.PitchShift({
       pitch: 0,
@@ -142,10 +161,20 @@ export class AudioEngine {
 
     this.source.connect(this.analyser);
     this.analyser.connect(this.compressor);
-    this.compressor.connect(this.pitchShift.input as unknown as AudioNode);
-    this.pitchShift.connect(this.feedbackDelay);
-    this.feedbackDelay.connect(this.reverb);
-    this.reverb.connect(this.masterGain);
+
+    this.compressor.connect(this.dryGain);
+    this.dryGain.connect(this.masterGain);
+
+    this.compressor.connect(this.echoDelayNode);
+    this.echoDelayNode.connect(this.echoWetGain);
+    this.echoWetGain.connect(this.masterGain);
+    this.echoDelayNode.connect(this.echoFeedbackGain);
+    this.echoFeedbackGain.connect(this.echoDelayNode);
+
+    this.compressor.connect(this.reverbConvolver);
+    this.reverbConvolver.connect(this.reverbGain);
+    this.reverbGain.connect(this.masterGain);
+
     this.masterGain.connect(this.context.destination);
 
     void this.reverb.ready;
@@ -161,12 +190,30 @@ export class AudioEngine {
   updateSettings(nextSettings: Partial<AudioEngineSettings>): void {
     this.settings = { ...this.settings, ...nextSettings };
 
+    const now = this.context?.currentTime ?? 0;
+
     if (this.masterGain) {
-      this.masterGain.gain.setTargetAtTime(
-        this.settings.outputEnabled ? this.settings.masterGain : 0,
-        this.context?.currentTime ?? 0,
-        0.02,
-      );
+      this.masterGain.gain.setTargetAtTime(this.settings.masterGain, now, 0.02);
+    }
+
+    if (this.dryGain) {
+      this.dryGain.gain.setTargetAtTime(this.settings.outputEnabled ? 0.82 : 0, now, 0.02);
+    }
+
+    if (this.echoDelayNode) {
+      this.echoDelayNode.delayTime.setTargetAtTime(this.settings.echoDelay, now, 0.02);
+    }
+
+    if (this.echoFeedbackGain) {
+      this.echoFeedbackGain.gain.setTargetAtTime(this.settings.echoEnabled ? this.settings.echoFeedback : 0, now, 0.02);
+    }
+
+    if (this.echoWetGain) {
+      this.echoWetGain.gain.setTargetAtTime(this.settings.echoEnabled ? 0.88 : 0, now, 0.02);
+    }
+
+    if (this.reverbGain) {
+      this.reverbGain.gain.setTargetAtTime(this.settings.reverbEnabled ? this.settings.reverbMix : 0, now, 0.02);
     }
 
     if (this.feedbackDelay) {
@@ -391,9 +438,32 @@ export class AudioEngine {
     this.analyser?.disconnect();
     this.compressor?.disconnect();
     this.masterGain?.disconnect();
+    this.dryGain?.disconnect();
+    this.echoDelayNode?.disconnect();
+    this.echoFeedbackGain?.disconnect();
+    this.echoWetGain?.disconnect();
+    this.reverbConvolver?.disconnect();
+    this.reverbGain?.disconnect();
     this.pitchShift?.dispose();
     this.feedbackDelay?.dispose();
     this.reverb?.dispose();
+  }
+
+  private createImpulseResponse(duration: number, decay: number): AudioBuffer {
+    const context = this.requireContext();
+    const length = Math.floor(context.sampleRate * duration);
+    const impulse = context.createBuffer(2, length, context.sampleRate);
+
+    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+      const data = impulse.getChannelData(channel);
+
+      for (let index = 0; index < length; index += 1) {
+        const envelope = (1 - index / length) ** decay;
+        data[index] = (Math.random() * 2 - 1) * envelope;
+      }
+    }
+
+    return impulse;
   }
 
   private requireContext(): AudioContext {
