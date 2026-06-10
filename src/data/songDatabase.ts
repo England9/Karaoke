@@ -262,7 +262,7 @@ function chooseBestITunesMatch(results: ITunesSearchResult[], query: string): IT
 
 async function readFileTags(file: File): Promise<{ title?: string; artist?: string } | null> {
   try {
-    const { parseBlob } = await import('music-metadata-browser');
+    const { parseBlob } = await import('music-metadata');
     const metadata = await parseBlob(file, {
       duration: false,
       skipCovers: true,

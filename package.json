@@ -22,7 +22,7 @@
   "homepage": "https://github.com/England9/Karaoke#readme",
   "dependencies": {
     "lucide-react": "^1.17.0",
-    "music-metadata-browser": "^2.5.11",
+    "music-metadata": "^11.13.0",
     "pitchy": "^4.1.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
