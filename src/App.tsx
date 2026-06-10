@@ -59,7 +59,9 @@ function App() {
   const [chartLookup, setChartLookup] = useState<SongChartLookup>({
     chart: mockSong,
     query: mockSong.songTitle,
-    source: 'local-demo-database',
+    source: 'demo-database',
+    lyricsSource: 'Demo chart',
+    noteSource: 'Demo chart',
   });
   const demoStartRef = useRef(0);
   const demoFrameRef = useRef<number | null>(null);
@@ -159,8 +161,8 @@ function App() {
       await initialize();
     }
 
-    await loadSong(file);
-    const lookup = await resolveSongChart(file.name);
+    const audioBuffer = await loadSong(file);
+    const lookup = await resolveSongChart(file.name, audioBuffer);
     setChartLookup(lookup);
 
     if (lookup.chart) {
@@ -344,11 +346,14 @@ function App() {
                 </p>
                 <p className="mt-2 text-slate-300">
                   {chartLookup.chart
-                    ? `Matched "${chartLookup.chart.songTitle}" from ${chartLookup.source.replaceAll('-', ' ')}.`
-                    : `No chart found for "${chartLookup.query}". Add /song-database/${chartLookup.query.toLowerCase().replaceAll(' ', '-')}.json or a local database entry.`}
+                    ? `${chartLookup.message ?? `Loaded "${chartLookup.chart.songTitle}".`}`
+                    : `No lyrics match found for "${chartLookup.query}", and audio analysis could not build a chart.`}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Available now: {songDatabase.map((song) => song.songTitle).join(', ')}
+                  Lyrics: {chartLookup.lyricsSource ?? 'none'} | Notes: {chartLookup.noteSource ?? 'none'}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Demo fallback entries: {songDatabase.map((song) => song.songTitle).join(', ')}
                 </p>
               </div>
             </Panel>

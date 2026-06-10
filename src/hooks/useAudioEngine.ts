@@ -106,8 +106,9 @@ export function useAudioEngine() {
   }, []);
 
   const loadSong = useCallback(async (file: File) => {
-    await engine.current.loadSongFile(file);
+    const buffer = await engine.current.loadSongFile(file);
     setState((previous) => ({ ...previous, loadedSongName: file.name, songTime: 0 }));
+    return buffer;
   }, []);
 
   const playSong = useCallback(() => {
