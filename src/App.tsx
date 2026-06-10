@@ -1,6 +1,7 @@
 import {
   Activity,
   AudioLines,
+  Database,
   Download,
   Gauge,
   Mic,
@@ -19,9 +20,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { KaraokePlayer } from './components/KaraokePlayer';
-import { mockSong, mockSongDuration } from './data/mockSong';
+import { mockSong } from './data/mockSong';
+import { getSongDuration, resolveSongChart, songDatabase, type SongChartLookup } from './data/songDatabase';
 import { useAudioEngine } from './hooks/useAudioEngine';
-import type { GameScore, ScaleMode } from './types/song';
+import type { GameScore, ScaleMode, SongChart } from './types/song';
 import { audioBufferToWavBlob } from './utils/audioBuffer';
 
 const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -53,6 +55,12 @@ function App() {
   const [score, setScore] = useState<GameScore>(emptyScore);
   const [demoPlaying, setDemoPlaying] = useState(false);
   const [demoTime, setDemoTime] = useState(0);
+  const [activeChart, setActiveChart] = useState<SongChart>(mockSong);
+  const [chartLookup, setChartLookup] = useState<SongChartLookup>({
+    chart: mockSong,
+    query: mockSong.songTitle,
+    source: 'local-demo-database',
+  });
   const demoStartRef = useRef(0);
   const demoFrameRef = useRef<number | null>(null);
   const lastRecording = state.lastRecording;
@@ -62,8 +70,9 @@ function App() {
   );
   const rawRecordingUrl = useObjectUrl(lastRecording?.rawBlob ?? null);
   const processedRecordingUrl = useObjectUrl(processedBlob);
+  const chartDuration = getSongDuration(activeChart);
   const gameTime = state.loadedSongName ? state.songTime : demoTime;
-  const activeNote = mockSong.notes.find((note) => gameTime >= note.time && gameTime <= note.time + note.duration);
+  const activeNote = activeChart.notes.find((note) => gameTime >= note.time && gameTime <= note.time + note.duration);
   const scoreChanged = useCallback((nextScore: GameScore) => setScore(nextScore), []);
 
   useEffect(() => {
@@ -78,7 +87,7 @@ function App() {
     const tick = () => {
       const nextTime = (performance.now() - demoStartRef.current) / 1000;
 
-      if (nextTime >= mockSongDuration) {
+      if (nextTime >= chartDuration) {
         setDemoPlaying(false);
         setDemoTime(0);
         return;
@@ -95,7 +104,7 @@ function App() {
         cancelAnimationFrame(demoFrameRef.current);
       }
     };
-  }, [demoPlaying, state.loadedSongName]);
+  }, [chartDuration, demoPlaying, state.loadedSongName]);
 
   const handleInitialize = async () => {
     await initialize();
@@ -151,8 +160,17 @@ function App() {
     }
 
     await loadSong(file);
+    const lookup = await resolveSongChart(file.name);
+    setChartLookup(lookup);
+
+    if (lookup.chart) {
+      setActiveChart(lookup.chart);
+      updateSettings({ key: lookup.chart.key });
+    }
+
     setDemoPlaying(false);
     setDemoTime(0);
+    setScore(emptyScore);
   };
 
   const handleRecord = async () => {
@@ -254,7 +272,10 @@ function App() {
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-300">Note highway</p>
-                <h2 className="text-2xl font-black text-white">{mockSong.songTitle}</h2>
+                <h2 className="text-2xl font-black text-white">{activeChart.songTitle}</h2>
+                <p className="text-sm text-slate-400">
+                  {activeChart.artist} | {activeChart.bpm} BPM | {activeChart.key}
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <TransportButton icon={<Play />} label="Play" onClick={handlePlay} />
@@ -263,7 +284,7 @@ function App() {
               </div>
             </div>
             <KaraokePlayer
-              chart={mockSong}
+              chart={activeChart}
               currentTime={gameTime}
               pitchFrame={state.pitchFrame}
               latencyCompensationMs={settings.latencyCompensationMs}
@@ -316,6 +337,20 @@ function App() {
                 enabled={settings.karaokeCut}
                 onChange={(enabled) => updateSettings({ karaokeCut: enabled })}
               />
+              <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3 text-sm">
+                <p className="flex items-center gap-2 font-black text-white">
+                  <Database className="h-4 w-4 text-cyan-200" />
+                  Song database
+                </p>
+                <p className="mt-2 text-slate-300">
+                  {chartLookup.chart
+                    ? `Matched "${chartLookup.chart.songTitle}" from ${chartLookup.source.replaceAll('-', ' ')}.`
+                    : `No chart found for "${chartLookup.query}". Add /song-database/${chartLookup.query.toLowerCase().replaceAll(' ', '-')}.json or a local database entry.`}
+                </p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Available now: {songDatabase.map((song) => song.songTitle).join(', ')}
+                </p>
+              </div>
             </Panel>
           </aside>
         </section>

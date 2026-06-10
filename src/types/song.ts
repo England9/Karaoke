@@ -15,6 +15,8 @@ export interface SongChart {
   artist: string;
   bpm: number;
   key: string;
+  aliases?: string[];
+  source?: string;
   notes: SongNote[];
 }
 
