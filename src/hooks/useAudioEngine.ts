@@ -76,6 +76,27 @@ export function useAudioEngine() {
     }
   }, [settings, startLoop]);
 
+  const stopCalibration = useCallback(() => {
+    stopLoop();
+    engine.current.destroy();
+    detector.current.reset();
+    setSettingsState((previous) => ({
+      ...previous,
+      outputEnabled: false,
+      echoEnabled: false,
+      reverbEnabled: false,
+    }));
+    setState((previous) => ({
+      ...previous,
+      initialized: false,
+      initializing: false,
+      error: null,
+      pitchFrame: null,
+      recording: false,
+      songTime: 0,
+    }));
+  }, [stopLoop]);
+
   const updateSettings = useCallback((nextSettings: Partial<AudioEngineSettings>) => {
     setSettingsState((previous) => {
       const merged = { ...previous, ...nextSettings };
@@ -127,6 +148,7 @@ export function useAudioEngine() {
       settings,
       state,
       initialize,
+      stopCalibration,
       updateSettings,
       loadSong,
       playSong,
@@ -135,6 +157,18 @@ export function useAudioEngine() {
       startRecording,
       stopRecording,
     }),
-    [initialize, loadSong, pauseSong, playSong, settings, startRecording, state, stopRecording, stopSong, updateSettings],
+    [
+      initialize,
+      loadSong,
+      pauseSong,
+      playSong,
+      settings,
+      startRecording,
+      state,
+      stopCalibration,
+      stopRecording,
+      stopSong,
+      updateSettings,
+    ],
   );
 }

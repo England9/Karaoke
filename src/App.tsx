@@ -4,6 +4,7 @@ import {
   Download,
   Gauge,
   Mic,
+  MicOff,
   Music2,
   Pause,
   Play,
@@ -40,6 +41,7 @@ function App() {
     settings,
     state,
     initialize,
+    stopCalibration,
     updateSettings,
     loadSong,
     playSong,
@@ -97,6 +99,13 @@ function App() {
 
   const handleInitialize = async () => {
     await initialize();
+  };
+
+  const handleStopCalibration = () => {
+    stopCalibration();
+    setDemoPlaying(false);
+    setDemoTime(0);
+    setScore(emptyScore);
   };
 
   const handlePlay = async () => {
@@ -276,6 +285,16 @@ function App() {
                   style={{ width: `${Math.min(100, (state.pitchFrame?.volume ?? 0) * 800)}%` }}
                 />
               </div>
+              {state.initialized && (
+                <button
+                  type="button"
+                  onClick={handleStopCalibration}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border border-rose-300/25 bg-rose-400/10 px-4 py-3 text-sm font-black text-rose-100 transition-all duration-300 hover:bg-rose-400/20"
+                >
+                  <MicOff className="h-4 w-4" />
+                  Stop mic calibration
+                </button>
+              )}
             </Panel>
 
             <Panel title="Song import" icon={<Upload className="h-5 w-5" />}>
@@ -334,6 +353,11 @@ function App() {
 
           <Panel title="Vocal FX module" icon={<Waves className="h-5 w-5" />}>
             <Toggle
+              label="Vocal isolation mode"
+              enabled={settings.vocalIsolation}
+              onChange={(vocalIsolation) => updateSettings({ vocalIsolation })}
+            />
+            <Toggle
               label="Echo mode"
               enabled={settings.echoEnabled}
               onChange={(echoEnabled) => void handleEchoToggle(echoEnabled)}
@@ -351,7 +375,7 @@ function App() {
               label="Feedback"
               value={settings.echoFeedback}
               min={0}
-              max={0.85}
+              max={0.55}
               step={0.01}
               suffix=""
               onChange={(echoFeedback) => updateSettings({ echoFeedback })}
@@ -401,7 +425,7 @@ function App() {
             McLeod pitch method via pitchy reads a 4096-sample analyser buffer at animation-frame cadence.
           </InfoBadge>
           <InfoBadge icon={<SlidersHorizontal />} title="Signal flow">
-            Mic to analyser, compressor, live monitor, native echo/reverb sends, master gain, and destination.
+            Mic to vocal-isolation filters, analyser, compressor, gated monitor, echo/reverb sends, master gain, and destination.
           </InfoBadge>
           <InfoBadge icon={<Sparkles />} title="Scoring">
             Perfect within 10 cents, good within 25 cents, off-key outside 50 cents, with combo multiplier.

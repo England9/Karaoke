@@ -7,12 +7,16 @@ export interface PitchDetectorOptions {
   fftSize?: number;
   clarityThreshold?: number;
   minVolumeDecibels?: number;
+  minFrequency?: number;
+  maxStableFrequency?: number;
 }
 
 export class RealtimePitchDetector {
   private readonly buffer: Float32Array<ArrayBuffer>;
 
   private readonly detector: McLeodPitchDetector<Float32Array>;
+
+  private previousFrequency = 0;
 
   constructor(private readonly options: PitchDetectorOptions = {}) {
     const fftSize = options.fftSize ?? 4096;
@@ -25,12 +29,17 @@ export class RealtimePitchDetector {
   readFrame(analyser: AnalyserNode, sampleRate: number): PitchFrame {
     analyser.getFloatTimeDomainData(this.buffer);
 
-    const [frequency, clarity] = this.detector.findPitch(this.buffer, sampleRate);
+    const [rawFrequency, clarity] = this.detector.findPitch(this.buffer, sampleRate);
     const volume = this.getRmsVolume();
+    const frequency = this.stabilizeFrequency(rawFrequency);
     const detected = frequency > 0 && clarity >= (this.options.clarityThreshold ?? 0.65);
     const midi = detected ? hzToMidi(frequency) : 0;
     const roundedMidi = detected ? Math.round(midi) : 0;
     const targetFrequency = detected ? midiToHz(roundedMidi) : 0;
+
+    if (detected) {
+      this.previousFrequency = frequency;
+    }
 
     return {
       frequency: detected ? frequency : 0,
@@ -43,6 +52,10 @@ export class RealtimePitchDetector {
     };
   }
 
+  reset(): void {
+    this.previousFrequency = 0;
+  }
+
   private getRmsVolume(): number {
     let sum = 0;
 
@@ -51,5 +64,27 @@ export class RealtimePitchDetector {
     }
 
     return Math.sqrt(sum / this.buffer.length);
+  }
+
+  private stabilizeFrequency(rawFrequency: number): number {
+    if (!rawFrequency) {
+      return 0;
+    }
+
+    const minFrequency = this.options.minFrequency ?? 75;
+    const maxStableFrequency = this.options.maxStableFrequency ?? 560;
+    const candidates = [rawFrequency, rawFrequency / 2, rawFrequency * 2]
+      .filter((frequency) => frequency >= minFrequency && frequency <= maxStableFrequency)
+      .map((frequency) => ({
+        frequency,
+        score: this.previousFrequency
+          ? Math.abs(Math.log2(frequency / this.previousFrequency))
+          : frequency > maxStableFrequency * 0.92
+            ? 0.2
+            : 0,
+      }))
+      .sort((a, b) => a.score - b.score);
+
+    return candidates[0]?.frequency ?? rawFrequency;
   }
 }
