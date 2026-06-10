@@ -1,5 +1,4 @@
 import { PitchDetector } from 'pitchy';
-import { parseBlob } from 'music-metadata-browser';
 
 import type { SongChart, SongNote } from '../types/song';
 import { clamp, hzToMidi, midiToNoteName, noteNameToHz } from '../utils/music';
@@ -263,6 +262,7 @@ function chooseBestITunesMatch(results: ITunesSearchResult[], query: string): IT
 
 async function readFileTags(file: File): Promise<{ title?: string; artist?: string } | null> {
   try {
+    const { parseBlob } = await import('music-metadata-browser');
     const metadata = await parseBlob(file, {
       duration: false,
       skipCovers: true,
