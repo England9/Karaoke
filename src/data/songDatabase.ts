@@ -34,6 +34,17 @@ interface LyricLine {
   text: string;
 }
 
+interface SongIdentity {
+  title: string;
+  artist?: string;
+  source: 'file-tags' | 'itunes-search' | 'filename';
+}
+
+interface ITunesSearchResult {
+  artistName?: string;
+  trackName?: string;
+}
+
 const localCharts: RawSongChart[] = [
   {
     songTitle: 'Neon Skyline',
@@ -95,9 +106,15 @@ const localCharts: RawSongChart[] = [
 
 export const songDatabase = localCharts.map(hydrateChart);
 
-export async function resolveSongChart(fileNameOrTitle: string, audioBuffer?: AudioBuffer): Promise<SongChartLookup> {
+export async function resolveSongChart(
+  fileNameOrTitle: string,
+  audioBuffer?: AudioBuffer,
+  file?: File,
+): Promise<SongChartLookup> {
   const query = cleanSongQuery(fileNameOrTitle);
-  const remoteLyrics = await fetchLyricsFromLrcLib(query);
+  const identity = await resolveSongIdentity(query, file);
+  const lyricQuery = [identity.artist, identity.title].filter(Boolean).join(' ');
+  const remoteLyrics = await fetchLyricsFromLrcLib(lyricQuery || query);
 
   if (audioBuffer) {
     const chart = buildChartFromAudio(audioBuffer, query, remoteLyrics);
@@ -109,8 +126,8 @@ export async function resolveSongChart(fileNameOrTitle: string, audioBuffer?: Au
       lyricsSource: remoteLyrics ? `LRCLIB: ${remoteLyrics.artistName} - ${remoteLyrics.trackName}` : 'Generated timing placeholders',
       noteSource: 'Uploaded audio pitch analysis',
       message: remoteLyrics
-        ? `Loaded lyrics for ${remoteLyrics.artistName} - ${remoteLyrics.trackName}; notes were extracted from the uploaded audio.`
-        : 'No public lyrics match was found; notes were extracted from audio and placeholder lyrics were generated.',
+        ? `Identified by ${identity.source.replace('-', ' ')} as ${identity.artist ? `${identity.artist} - ` : ''}${identity.title}. Loaded lyrics for ${remoteLyrics.artistName} - ${remoteLyrics.trackName}; notes were extracted from the uploaded audio.`
+        : `Identified by ${identity.source.replace('-', ' ')} as ${identity.artist ? `${identity.artist} - ` : ''}${identity.title}. No public lyrics match was found; notes were extracted from audio and placeholder lyrics were generated.`,
     };
   }
 
@@ -130,6 +147,151 @@ export async function resolveSongChart(fileNameOrTitle: string, audioBuffer?: Au
     query,
     source: 'not-found',
   };
+}
+
+async function resolveSongIdentity(query: string, file?: File): Promise<SongIdentity> {
+  const taggedIdentity = file ? await readFileTags(file) : null;
+
+  if (taggedIdentity?.title) {
+    return {
+      title: taggedIdentity.title,
+      artist: taggedIdentity.artist,
+      source: 'file-tags',
+    };
+  }
+
+  const iTunesIdentity = await fetchITunesIdentity(query);
+
+  if (iTunesIdentity) {
+    return iTunesIdentity;
+  }
+
+  return {
+    title: titleCase(query),
+    source: 'filename',
+  };
+}
+
+async function fetchITunesIdentity(query: string): Promise<SongIdentity | null> {
+  if (!query) {
+    return null;
+  }
+
+  try {
+    const url = new URL('https://itunes.apple.com/search');
+    url.searchParams.set('term', query);
+    url.searchParams.set('media', 'music');
+    url.searchParams.set('entity', 'song');
+    url.searchParams.set('limit', '5');
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { results?: ITunesSearchResult[] };
+    const match = chooseBestITunesMatch(data.results ?? [], query);
+
+    if (!match?.trackName) {
+      return null;
+    }
+
+    return {
+      title: match.trackName,
+      artist: match.artistName,
+      source: 'itunes-search',
+    };
+  } catch {
+    return null;
+  }
+}
+
+function chooseBestITunesMatch(results: ITunesSearchResult[], query: string): ITunesSearchResult | null {
+  const querySlug = toSongSlug(query);
+
+  return (
+    results
+      .filter((result) => result.trackName)
+      .map((result, index) => {
+        const titleSlug = toSongSlug(result.trackName ?? '');
+        const exactTitle = titleSlug === querySlug ? 10 : 0;
+        const containsTitle = titleSlug.includes(querySlug) || querySlug.includes(titleSlug) ? 4 : 0;
+
+        return {
+          result,
+          score: exactTitle + containsTitle - index * 0.2,
+        };
+      })
+      .sort((a, b) => b.score - a.score)[0]?.result ?? null
+  );
+}
+
+async function readFileTags(file: File): Promise<{ title?: string; artist?: string } | null> {
+  if (!file.name.toLowerCase().endsWith('.mp3')) {
+    return null;
+  }
+
+  const buffer = await file.slice(0, 262_144).arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+
+  if (bytes.length < 10 || text(bytes, 0, 3) !== 'ID3') {
+    return null;
+  }
+
+  const majorVersion = bytes[3];
+  const tagSize = readSynchsafeInteger(bytes, 6);
+  const end = Math.min(bytes.length, 10 + tagSize);
+  let offset = 10;
+  const tags: { title?: string; artist?: string } = {};
+
+  while (offset + 10 <= end) {
+    const frameId = text(bytes, offset, 4);
+    const frameSize = majorVersion === 4 ? readSynchsafeInteger(bytes, offset + 4) : readUInt32(bytes, offset + 4);
+
+    if (!frameId.trim() || frameSize <= 0 || offset + 10 + frameSize > bytes.length) {
+      break;
+    }
+
+    if (frameId === 'TIT2') {
+      tags.title = decodeTextFrame(bytes.slice(offset + 10, offset + 10 + frameSize));
+    }
+
+    if (frameId === 'TPE1') {
+      tags.artist = decodeTextFrame(bytes.slice(offset + 10, offset + 10 + frameSize));
+    }
+
+    offset += 10 + frameSize;
+  }
+
+  return tags.title ? tags : null;
+}
+
+function decodeTextFrame(bytes: Uint8Array): string {
+  if (!bytes.length) {
+    return '';
+  }
+
+  const encoding = bytes[0];
+  const payload = bytes.slice(1);
+
+  if (encoding === 1 || encoding === 2) {
+    return new TextDecoder('utf-16').decode(payload).replace(/\0/g, '').trim();
+  }
+
+  return new TextDecoder('utf-8').decode(payload).replace(/\0/g, '').trim();
+}
+
+function readSynchsafeInteger(bytes: Uint8Array, offset: number): number {
+  return ((bytes[offset] & 0x7f) << 21) | ((bytes[offset + 1] & 0x7f) << 14) | ((bytes[offset + 2] & 0x7f) << 7) | (bytes[offset + 3] & 0x7f);
+}
+
+function readUInt32(bytes: Uint8Array, offset: number): number {
+  return (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
+}
+
+function text(bytes: Uint8Array, offset: number, length: number): string {
+  return String.fromCharCode(...bytes.slice(offset, offset + length));
 }
 
 export function getSongDuration(chart: SongChart): number {

@@ -162,7 +162,7 @@ function App() {
     }
 
     const audioBuffer = await loadSong(file);
-    const lookup = await resolveSongChart(file.name, audioBuffer);
+    const lookup = await resolveSongChart(file.name, audioBuffer, file);
     setChartLookup(lookup);
 
     if (lookup.chart) {
