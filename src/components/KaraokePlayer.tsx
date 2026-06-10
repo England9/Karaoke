@@ -52,46 +52,7 @@ export function KaraokePlayer({
     previousTimeRef.current = currentTime;
   }, [currentTime, onScoreChange]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-
-    if (!canvas) {
-      return undefined;
-    }
-
-    const context = canvas.getContext('2d');
-
-    if (!context) {
-      return undefined;
-    }
-
-    const draw = () => {
-      const rect = canvas.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-
-      if (canvas.width !== rect.width * ratio || canvas.height !== rect.height * ratio) {
-        canvas.width = rect.width * ratio;
-        canvas.height = rect.height * ratio;
-      }
-
-      context.save();
-      context.scale(ratio, ratio);
-      renderCanvas(context, rect.width, rect.height);
-      context.restore();
-
-      frameRef.current = requestAnimationFrame(draw);
-    };
-
-    frameRef.current = requestAnimationFrame(draw);
-
-    return () => {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  });
-
-  const renderCanvas = (context: CanvasRenderingContext2D, width: number, height: number) => {
+  function renderCanvas(context: CanvasRenderingContext2D, width: number, height: number) {
     const effectiveTime = currentTime + latencyCompensationMs / 1000;
     const playheadX = 138;
     const pxPerSecond = Math.max(92, width / 7);
@@ -152,9 +113,9 @@ export function KaraokePlayer({
     drawVocalPuck(context, playheadX, railTop, railBottom, liveGrade);
     drawLyrics(context, width, height, effectiveTime, liveGrade);
     drawHud(context, width, liveGrade, targetCents);
-  };
+  }
 
-  const judgeNotes = (effectiveTime: number, targetCents: number | null) => {
+  function judgeNotes(effectiveTime: number, targetCents: number | null) {
     chart.notes.forEach((note, index) => {
       const judgeTime = note.time + note.duration * 0.58;
 
@@ -183,21 +144,21 @@ export function KaraokePlayer({
       };
       onScoreChange(scoreRef.current);
     });
-  };
+  }
 
-  const pitchToY = (midi: number, top: number, bottom: number, minMidi: number, maxMidi: number) => {
+  function pitchToY(midi: number, top: number, bottom: number, minMidi: number, maxMidi: number) {
     const normalized = clamp((midi - minMidi) / (maxMidi - minMidi), 0, 1);
     return bottom - normalized * (bottom - top);
-  };
+  }
 
-  const drawGrid = (
+  function drawGrid(
     context: CanvasRenderingContext2D,
     width: number,
     top: number,
     bottom: number,
     minMidi: number,
     maxMidi: number,
-  ) => {
+  ) {
     context.strokeStyle = 'rgba(125, 211, 252, 0.12)';
     context.lineWidth = 1;
 
@@ -216,15 +177,15 @@ export function KaraokePlayer({
       context.lineTo(x, bottom);
       context.stroke();
     }
-  };
+  }
 
-  const drawPlayhead = (
+  function drawPlayhead(
     context: CanvasRenderingContext2D,
     playheadX: number,
     top: number,
     bottom: number,
     grade: GameScore['lastGrade'],
-  ) => {
+  ) {
     context.strokeStyle = gradeColor(grade);
     context.shadowColor = gradeColor(grade);
     context.shadowBlur = 24;
@@ -234,15 +195,15 @@ export function KaraokePlayer({
     context.lineTo(playheadX, bottom);
     context.stroke();
     context.shadowBlur = 0;
-  };
+  }
 
-  const drawVocalPuck = (
+  function drawVocalPuck(
     context: CanvasRenderingContext2D,
     playheadX: number,
     top: number,
     bottom: number,
     grade: GameScore['lastGrade'],
-  ) => {
+  ) {
     const y = pitchFrame?.midi ? pitchToY(pitchFrame.midi, top, bottom, midiRange.min, midiRange.max) : (top + bottom) / 2;
     const color = gradeColor(grade);
 
@@ -256,15 +217,15 @@ export function KaraokePlayer({
     context.strokeStyle = '#f8fafc';
     context.lineWidth = 2;
     context.stroke();
-  };
+  }
 
-  const drawLyrics = (
+  function drawLyrics(
     context: CanvasRenderingContext2D,
     width: number,
     height: number,
     effectiveTime: number,
     grade: GameScore['lastGrade'],
-  ) => {
+  ) {
     const upcoming = chart.notes.filter((note) => note.time + note.duration >= effectiveTime - 0.3).slice(0, 5);
     const lyric = upcoming.map((note) => note.lyric).join(' ');
 
@@ -276,14 +237,14 @@ export function KaraokePlayer({
     context.fillText(lyric || 'Press play and sing into the neon rail', width / 2, height - 34);
     context.shadowBlur = 0;
     context.textAlign = 'start';
-  };
+  }
 
-  const drawHud = (
+  function drawHud(
     context: CanvasRenderingContext2D,
     width: number,
     grade: GameScore['lastGrade'],
     targetCents: number | null,
-  ) => {
+  ) {
     context.fillStyle = 'rgba(2, 6, 23, 0.68)';
     roundedRect(context, 16, 14, width - 32, 34, 14);
     context.fill();
@@ -296,7 +257,46 @@ export function KaraokePlayer({
       width - 190,
       36,
     );
-  };
+  }
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+
+    if (!canvas) {
+      return undefined;
+    }
+
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      return undefined;
+    }
+
+    const draw = () => {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+
+      if (canvas.width !== rect.width * ratio || canvas.height !== rect.height * ratio) {
+        canvas.width = rect.width * ratio;
+        canvas.height = rect.height * ratio;
+      }
+
+      context.save();
+      context.scale(ratio, ratio);
+      renderCanvas(context, rect.width, rect.height);
+      context.restore();
+
+      frameRef.current = requestAnimationFrame(draw);
+    };
+
+    frameRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  });
 
   return (
     <canvas

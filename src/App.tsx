@@ -53,11 +53,12 @@ function App() {
   const [demoTime, setDemoTime] = useState(0);
   const demoStartRef = useRef(0);
   const demoFrameRef = useRef<number | null>(null);
+  const lastRecording = state.lastRecording;
   const processedBlob = useMemo(
-    () => (state.lastRecording?.processedBuffer ? audioBufferToWavBlob(state.lastRecording.processedBuffer) : null),
-    [state.lastRecording?.processedBuffer],
+    () => (lastRecording?.processedBuffer ? audioBufferToWavBlob(lastRecording.processedBuffer) : null),
+    [lastRecording],
   );
-  const rawRecordingUrl = useObjectUrl(state.lastRecording?.rawBlob ?? null);
+  const rawRecordingUrl = useObjectUrl(lastRecording?.rawBlob ?? null);
   const processedRecordingUrl = useObjectUrl(processedBlob);
   const gameTime = state.loadedSongName ? state.songTime : demoTime;
   const activeNote = mockSong.notes.find((note) => gameTime >= note.time && gameTime <= note.time + note.duration);
@@ -388,19 +389,15 @@ function App() {
 }
 
 function useObjectUrl(blob: Blob | null) {
-  const [url, setUrl] = useState<string | null>(null);
+  const url = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
 
   useEffect(() => {
-    if (!blob) {
-      setUrl(null);
-      return undefined;
-    }
-
-    const nextUrl = URL.createObjectURL(blob);
-    setUrl(nextUrl);
-
-    return () => URL.revokeObjectURL(nextUrl);
-  }, [blob]);
+    return () => {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
+    };
+  }, [url]);
 
   return url;
 }

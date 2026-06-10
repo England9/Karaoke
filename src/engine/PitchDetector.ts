@@ -10,13 +10,13 @@ export interface PitchDetectorOptions {
 }
 
 export class RealtimePitchDetector {
-  private readonly buffer: Float32Array;
+  private readonly buffer: Float32Array<ArrayBuffer>;
 
   private readonly detector: McLeodPitchDetector<Float32Array>;
 
   constructor(private readonly options: PitchDetectorOptions = {}) {
     const fftSize = options.fftSize ?? 4096;
-    this.buffer = new Float32Array(fftSize);
+    this.buffer = new Float32Array(fftSize) as Float32Array<ArrayBuffer>;
     this.detector = McLeodPitchDetector.forFloat32Array(fftSize);
     this.detector.clarityThreshold = options.clarityThreshold ?? 0.86;
     this.detector.minVolumeDecibels = options.minVolumeDecibels ?? -48;

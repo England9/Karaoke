@@ -142,7 +142,7 @@ export class AudioEngine {
 
     this.source.connect(this.analyser);
     this.analyser.connect(this.compressor);
-    this.compressor.connect(this.pitchShift.input as AudioNode);
+    this.compressor.connect(this.pitchShift.input as unknown as AudioNode);
     this.pitchShift.connect(this.feedbackDelay);
     this.feedbackDelay.connect(this.reverb);
     this.reverb.connect(this.masterGain);
@@ -336,7 +336,9 @@ export class AudioEngine {
 
   destroy(): void {
     this.stopSong();
-    this.mediaRecorder?.state !== 'inactive' && this.mediaRecorder?.stop();
+    if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      this.mediaRecorder.stop();
+    }
     this.stream?.getTracks().forEach((track) => track.stop());
     this.disconnectNodes();
     void this.context?.close();

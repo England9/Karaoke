@@ -113,9 +113,11 @@ export function useAudioEngine() {
   }, []);
 
   useEffect(() => {
+    const currentEngine = engine.current;
+
     return () => {
       stopLoop();
-      engine.current.destroy();
+      currentEngine.destroy();
     };
   }, [stopLoop]);
 
@@ -133,6 +135,6 @@ export function useAudioEngine() {
       startRecording,
       stopRecording,
     }),
-    [initialize, loadSong, pauseSong, playSong, settings, startRecording, state, stopLoop, stopRecording, updateSettings],
+    [initialize, loadSong, pauseSong, playSong, settings, startRecording, state, stopRecording, stopSong, updateSettings],
   );
 }
