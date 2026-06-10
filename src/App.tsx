@@ -21,7 +21,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { KaraokePlayer } from './components/KaraokePlayer';
 import { mockSong } from './data/mockSong';
-import { getSongDuration, resolveSongChart, songDatabase, type SongChartLookup } from './data/songDatabase';
+import { getSongDuration, resolveSongChart, type SongChartLookup } from './data/songDatabase';
+import { trackDatabase } from './data/tracks';
 import { useAudioEngine } from './hooks/useAudioEngine';
 import type { GameScore, ScaleMode, SongChart } from './types/song';
 import { audioBufferToWavBlob } from './utils/audioBuffer';
@@ -342,7 +343,7 @@ function App() {
               <div className="rounded-2xl border border-white/10 bg-slate-950/60 p-3 text-sm">
                 <p className="flex items-center gap-2 font-black text-white">
                   <Database className="h-4 w-4 text-cyan-200" />
-                  Song database
+                  Track matcher
                 </p>
                 <p className="mt-2 text-slate-300">
                   {chartLookup.chart
@@ -353,7 +354,7 @@ function App() {
                   Lyrics: {chartLookup.lyricsSource ?? 'none'} | Notes: {chartLookup.noteSource ?? 'none'}
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  Demo fallback entries: {songDatabase.map((song) => song.songTitle).join(', ')}
+                  Internal tracks: {trackDatabase.map((track) => `${track.artist} - ${track.title}`).join(', ')}
                 </p>
               </div>
             </Panel>
@@ -396,6 +397,15 @@ function App() {
               label="Vocal isolation mode"
               enabled={settings.vocalIsolation}
               onChange={(vocalIsolation) => updateSettings({ vocalIsolation })}
+            />
+            <Slider
+              label="Noise gate"
+              value={settings.noiseGateDb}
+              min={-65}
+              max={-25}
+              step={1}
+              suffix="dB"
+              onChange={(noiseGateDb) => updateSettings({ noiseGateDb })}
             />
             <Toggle
               label="Echo mode"

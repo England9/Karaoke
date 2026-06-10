@@ -43,8 +43,14 @@ export function useAudioEngine() {
     const audioContext = engine.current.getAudioContext();
 
     if (analyser && audioContext) {
-      const pitchFrame = detector.current.readFrame(analyser, audioContext.sampleRate);
-      engine.current.updatePitchCorrection(pitchFrame);
+      const pitchFrame = detector.current.readFrame(analyser, audioContext.sampleRate, settings.noiseGateDb);
+
+      if (pitchFrame) {
+        engine.current.updatePitchCorrection(pitchFrame);
+      } else {
+        engine.current.updatePitchCorrection(null);
+      }
+
       setState((previous) => ({
         ...previous,
         pitchFrame,
@@ -53,7 +59,7 @@ export function useAudioEngine() {
     }
 
     animationFrame.current = requestAnimationFrame(tick);
-  }, []);
+  }, [settings.noiseGateDb]);
 
   const startLoop = useCallback(() => {
     stopLoop();

@@ -22,6 +22,8 @@ export class RealtimePitchDetector {
 
   private lastFrame: PitchFrame | null = null;
 
+  private readonly stableMidiBuffer: number[] = [];
+
   constructor(private readonly options: PitchDetectorOptions = {}) {
     const fftSize = options.fftSize ?? 4096;
     this.buffer = new Float32Array(fftSize) as Float32Array<ArrayBuffer>;
@@ -30,18 +32,20 @@ export class RealtimePitchDetector {
     this.detector.minVolumeDecibels = options.minVolumeDecibels ?? -58;
   }
 
-  readFrame(analyser: AnalyserNode, sampleRate: number): PitchFrame {
+  readFrame(analyser: AnalyserNode, sampleRate: number, noiseGateDb = -45): PitchFrame | null {
     analyser.getFloatTimeDomainData(this.buffer);
 
     const [rawFrequency, clarity] = this.detector.findPitch(this.buffer, sampleRate);
     const volume = this.getRmsVolume();
     const timestamp = performance.now();
     const frequency = this.smoothFrequency(this.stabilizeFrequency(rawFrequency));
-    const isVoiced = volume >= 0.006;
+    const gateThreshold = 10 ** (noiseGateDb / 20);
+    const isVoiced = volume >= gateThreshold;
     const detected = frequency > 0 && isVoiced && clarity >= (this.options.clarityThreshold ?? 0.5);
 
     if (detected) {
-      const frame = this.createFrame(frequency, clarity, volume, timestamp);
+      const stableFrequency = this.stabilizeNoteChange(frequency);
+      const frame = this.createFrame(stableFrequency, clarity, volume, timestamp);
       this.previousFrequency = frequency;
       this.lastFrame = frame;
       return frame;
@@ -59,22 +63,16 @@ export class RealtimePitchDetector {
     if (!isVoiced) {
       this.previousFrequency = 0;
       this.lastFrame = null;
+      this.stableMidiBuffer.length = 0;
     }
 
-    return {
-      frequency: 0,
-      clarity,
-      note: '--',
-      midi: 0,
-      cents: 0,
-      volume,
-      timestamp,
-    };
+    return null;
   }
 
   reset(): void {
     this.previousFrequency = 0;
     this.lastFrame = null;
+    this.stableMidiBuffer.length = 0;
   }
 
   private createFrame(frequency: number, clarity: number, volume: number, timestamp: number): PitchFrame {
@@ -148,5 +146,28 @@ export class RealtimePitchDetector {
 
     const smoothing = this.options.smoothing ?? 0.28;
     return this.previousFrequency * (1 - smoothing) + frequency * smoothing;
+  }
+
+  private stabilizeNoteChange(frequency: number): number {
+    const midi = hzToMidi(frequency);
+    this.stableMidiBuffer.push(midi);
+
+    if (this.stableMidiBuffer.length > 5) {
+      this.stableMidiBuffer.shift();
+    }
+
+    if (!this.lastFrame || this.stableMidiBuffer.length < 3) {
+      return frequency;
+    }
+
+    const averageMidi = this.stableMidiBuffer.reduce((sum, value) => sum + value, 0) / this.stableMidiBuffer.length;
+    const maxDeviationCents = Math.max(...this.stableMidiBuffer.map((value) => Math.abs(value - averageMidi) * 100));
+    const noteChanged = Math.round(averageMidi) !== Math.round(this.lastFrame.midi);
+
+    if (noteChanged && maxDeviationCents > 30) {
+      return this.lastFrame.frequency;
+    }
+
+    return frequency;
   }
 }

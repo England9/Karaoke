@@ -1,7 +1,9 @@
 import { PitchDetector } from 'pitchy';
+import { parseBlob } from 'music-metadata-browser';
 
 import type { SongChart, SongNote } from '../types/song';
 import { clamp, hzToMidi, midiToNoteName, noteNameToHz } from '../utils/music';
+import { trackDatabase, trackToSongChart, type TrackDatabaseEntry } from './tracks';
 
 type RawSongNote = Omit<SongNote, 'frequency'>;
 
@@ -12,7 +14,7 @@ type RawSongChart = Omit<SongChart, 'notes'> & {
 export interface SongChartLookup {
   chart: SongChart | null;
   query: string;
-  source: 'demo-database' | 'lrclib-audio-analysis' | 'audio-analysis' | 'not-found';
+  source: 'internal-track-database' | 'demo-database' | 'lrclib-audio-analysis' | 'audio-analysis' | 'not-found';
   lyricsSource?: string;
   noteSource?: string;
   message?: string;
@@ -113,6 +115,19 @@ export async function resolveSongChart(
 ): Promise<SongChartLookup> {
   const query = cleanSongQuery(fileNameOrTitle);
   const identity = await resolveSongIdentity(query, file);
+  const trackMatch = findTrackDatabaseMatch(identity, query);
+
+  if (trackMatch) {
+    return {
+      chart: trackToSongChart(trackMatch),
+      query,
+      source: 'internal-track-database',
+      lyricsSource: 'Internal synced timeline',
+      noteSource: 'Internal melody timeline',
+      message: `Matched ${trackMatch.artist} - ${trackMatch.title} from the internal track database using ${identity.source.replace('-', ' ')} metadata.`,
+    };
+  }
+
   const lyricQuery = [identity.artist, identity.title].filter(Boolean).join(' ');
   const remoteLyrics = await fetchLyricsFromLrcLib(lyricQuery || query);
 
@@ -172,6 +187,25 @@ async function resolveSongIdentity(query: string, file?: File): Promise<SongIden
   };
 }
 
+function findTrackDatabaseMatch(identity: SongIdentity, fallbackQuery: string): TrackDatabaseEntry | null {
+  const candidates = [
+    identity.title,
+    identity.artist ? `${identity.artist} ${identity.title}` : '',
+    fallbackQuery,
+  ].filter(Boolean);
+
+  return (
+    trackDatabase.find((track) => {
+      const searchable = [track.title, track.artist, `${track.artist} ${track.title}`, ...track.aliases].map(toSongSlug);
+
+      return candidates.some((candidate) => {
+        const candidateSlug = toSongSlug(candidate);
+        return searchable.some((value) => value === candidateSlug || value.includes(candidateSlug) || candidateSlug.includes(value));
+      });
+    }) ?? null
+  );
+}
+
 async function fetchITunesIdentity(query: string): Promise<SongIdentity | null> {
   if (!query) {
     return null;
@@ -228,70 +262,19 @@ function chooseBestITunesMatch(results: ITunesSearchResult[], query: string): IT
 }
 
 async function readFileTags(file: File): Promise<{ title?: string; artist?: string } | null> {
-  if (!file.name.toLowerCase().endsWith('.mp3')) {
+  try {
+    const metadata = await parseBlob(file, {
+      duration: false,
+      skipCovers: true,
+      skipPostHeaders: true,
+    });
+    const title = metadata.common.title?.trim();
+    const artist = metadata.common.artist?.trim() || metadata.common.artists?.[0]?.trim();
+
+    return title || artist ? { title, artist } : null;
+  } catch {
     return null;
   }
-
-  const buffer = await file.slice(0, 262_144).arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  if (bytes.length < 10 || text(bytes, 0, 3) !== 'ID3') {
-    return null;
-  }
-
-  const majorVersion = bytes[3];
-  const tagSize = readSynchsafeInteger(bytes, 6);
-  const end = Math.min(bytes.length, 10 + tagSize);
-  let offset = 10;
-  const tags: { title?: string; artist?: string } = {};
-
-  while (offset + 10 <= end) {
-    const frameId = text(bytes, offset, 4);
-    const frameSize = majorVersion === 4 ? readSynchsafeInteger(bytes, offset + 4) : readUInt32(bytes, offset + 4);
-
-    if (!frameId.trim() || frameSize <= 0 || offset + 10 + frameSize > bytes.length) {
-      break;
-    }
-
-    if (frameId === 'TIT2') {
-      tags.title = decodeTextFrame(bytes.slice(offset + 10, offset + 10 + frameSize));
-    }
-
-    if (frameId === 'TPE1') {
-      tags.artist = decodeTextFrame(bytes.slice(offset + 10, offset + 10 + frameSize));
-    }
-
-    offset += 10 + frameSize;
-  }
-
-  return tags.title ? tags : null;
-}
-
-function decodeTextFrame(bytes: Uint8Array): string {
-  if (!bytes.length) {
-    return '';
-  }
-
-  const encoding = bytes[0];
-  const payload = bytes.slice(1);
-
-  if (encoding === 1 || encoding === 2) {
-    return new TextDecoder('utf-16').decode(payload).replace(/\0/g, '').trim();
-  }
-
-  return new TextDecoder('utf-8').decode(payload).replace(/\0/g, '').trim();
-}
-
-function readSynchsafeInteger(bytes: Uint8Array, offset: number): number {
-  return ((bytes[offset] & 0x7f) << 21) | ((bytes[offset + 1] & 0x7f) << 14) | ((bytes[offset + 2] & 0x7f) << 7) | (bytes[offset + 3] & 0x7f);
-}
-
-function readUInt32(bytes: Uint8Array, offset: number): number {
-  return (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3];
-}
-
-function text(bytes: Uint8Array, offset: number, length: number): string {
-  return String.fromCharCode(...bytes.slice(offset, offset + length));
 }
 
 export function getSongDuration(chart: SongChart): number {
